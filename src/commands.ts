@@ -1,12 +1,28 @@
 // commands.ts | command helpers (bubbletea port)
 
-import type { Cmd, Msg, BatchMsg, SequenceMsg, QuitMsg, TickMsg, PrintMsg, ExecCommand, ExecCallback, CursorPositionMsg, FocusMsg, BlurMsg, PasteMsg, PasteStartMsg, PasteEndMsg } from "./types"
+import type { Cmd, Msg, BatchMsg, SequenceMsg, QuitMsg, SuspendMsg, InterruptMsg, TickMsg, PrintMsg, ExecCommand, ExecCallback, CursorPositionMsg, FocusMsg, BlurMsg, PasteMsg, PasteStartMsg, PasteEndMsg } from "./types"
 
 /**
  * Quit returns a command that quits the program.
  */
-export function Quit(): Msg {
-  return { type: "quit" } as QuitMsg
+export function Quit(): Cmd {
+  return () => ({ type: "quit" } as QuitMsg)
+}
+
+/**
+ * Suspend returns a command that suspends the program.
+ * This is equivalent to Ctrl+Z on Unix systems.
+ */
+export function Suspend(): Cmd {
+  return () => ({ type: "suspend" } as SuspendMsg)
+}
+
+/**
+ * Interrupt returns a command that interrupts the program.
+ * This is equivalent to Ctrl+C on most programs.
+ */
+export function Interrupt(): Cmd {
+  return () => ({ type: "interrupt" } as InterruptMsg)
 }
 
 /**

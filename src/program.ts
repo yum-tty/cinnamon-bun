@@ -1,6 +1,6 @@
 // program.ts | bubbletea event loop
 
-import type { Model, Msg, Cmd, ProgramConfig, KeyMsg, MouseMsg, WindowSizeMsg } from "./types"
+import type { Model, Msg, Cmd, ProgramConfig, KeyMsg, MouseMsg, WindowSizeMsg, View } from "./types"
 import { Renderer } from "./renderer"
 import { enableRawMode, disableRawMode, readKey, parseMouse } from "./input"
 import type { ProgramOption } from "./options"
@@ -24,6 +24,8 @@ export class Program {
   private cmds: Cmd[] = []
   private lastFrame: string = ""
   private inputBuffer: string = ""
+  private finishedPromise: Promise<void>
+  private finishedResolve: () => void = () => {}
 
   constructor(config: ProgramConfig, ...options: ProgramOption[]) {
     this.model = config.model
@@ -31,6 +33,10 @@ export class Program {
     this.altScreen = config.altScreen ?? true
     this.mouseMode = config.mouseMode ?? "none"
     this.fps = config.fps ?? 60
+
+    this.finishedPromise = new Promise<void>((resolve) => {
+      this.finishedResolve = resolve
+    })
 
     // Apply options
     for (const opt of options) {
@@ -103,7 +109,68 @@ export class Program {
     // Process commands
     await this.processCmds()
 
+    this.finishedResolve()
     return this.model
+  }
+
+  /**
+   * Wait waits for the program to finish.
+   */
+  async wait(): Promise<void> {
+    return this.finishedPromise
+  }
+
+  /**
+   * Quit sends a quit message to the program.
+   */
+  quit(): void {
+    this.send({ type: "quit" })
+  }
+
+  /**
+   * ReleaseTerminal restores the original terminal state.
+   * You can return control with RestoreTerminal.
+   */
+  releaseTerminal(): void {
+    this.running = false
+    disableRawMode(this.input)
+    if (this.rendererEnabled) {
+      this.renderer.restore()
+    }
+  }
+
+  /**
+   * RestoreTerminal reinitializes the terminal and repaints.
+   * Use after ReleaseTerminal.
+   */
+  restoreTerminal(): void {
+    this.running = true
+    if (this.rendererEnabled) {
+      this.renderer.init(this.altScreen)
+    }
+    enableRawMode(this.input)
+    // Flush queued commands
+    const view = this.model.view()
+    const content = typeof view === "string" ? view : view.content
+    if (this.rendererEnabled) {
+      this.renderer.render(content)
+    }
+  }
+
+  /**
+   * Println prints a line above the program.
+   * This output is unmanaged and persists across renders.
+   */
+  println(...args: any[]): void {
+    this.send({ type: "print", text: args.join(" ") } as any)
+  }
+
+  /**
+   * Printf prints formatted text above the program.
+   * This output is unmanaged and persists across renders.
+   */
+  printf(template: string, ...args: any[]): void {
+    this.send({ type: "print", text: template.replace(/%s/g, () => String(args.shift())) } as any)
   }
 
   /**
@@ -219,9 +286,10 @@ export class Program {
 
       if (this.rendererEnabled) {
         const view = this.model.view()
-        if (view !== this.lastFrame) {
-          this.renderer.render(view)
-          this.lastFrame = view
+        const content = typeof view === "string" ? view : view.content
+        if (content !== this.lastFrame) {
+          this.renderer.render(content)
+          this.lastFrame = content
         }
       }
 

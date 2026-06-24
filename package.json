@@ -41,6 +41,6 @@
     "@types/bun": "latest"
   },
   "dependencies": {
-    "caramel": "github:yum-tty/caramel"
+    "caramel": "file:../caramel"
   }
 }

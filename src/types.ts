@@ -20,6 +20,125 @@ export interface KeyMsg {
 }
 
 /**
+ * CursorShape represents a terminal cursor shape.
+ */
+export type CursorShape = "block" | "underline" | "bar"
+
+/**
+ * Cursor represents a cursor on the terminal screen.
+ */
+export interface Cursor {
+  x: number
+  y: number
+  color?: string
+  shape: CursorShape
+  blink: boolean
+}
+
+/**
+ * Position represents a position in the terminal.
+ */
+export interface Position {
+  x: number
+  y: number
+}
+
+/**
+ * ProgressBarState represents the state of the progress bar.
+ */
+export type ProgressBarState = "none" | "default" | "error" | "indeterminate" | "warning"
+
+/**
+ * ProgressBar represents the terminal progress bar.
+ */
+export interface ProgressBar {
+  state: ProgressBarState
+  value: number
+}
+
+/**
+ * MouseMode represents the mouse mode of a view.
+ */
+export type MouseMode = "none" | "cell" | "all"
+
+/**
+ * QuitMsg signals that the program should quit.
+ * You can send a QuitMsg with Quit.
+ */
+export interface QuitMsg {
+  type: "quit"
+}
+
+/**
+ * SuspendMsg signals the program should suspend.
+ */
+export interface SuspendMsg {
+  type: "suspend"
+}
+
+/**
+ * ResumeMsg is sent when a program resumes from a suspend state.
+ */
+export interface ResumeMsg {
+  type: "resume"
+}
+
+/**
+ * InterruptMsg signals the program should interrupt.
+ */
+export interface InterruptMsg {
+  type: "interrupt"
+}
+
+/**
+ * KeyboardEnhancements describes what keyboard enhancement features
+ * should be requested from the terminal.
+ */
+export interface KeyboardEnhancements {
+  reportEventTypes: boolean
+  reportAlternateKeys: boolean
+  reportAllKeysAsEscapeCodes: boolean
+  reportAssociatedText: boolean
+}
+
+/**
+ * View represents a terminal view.
+ */
+export interface View {
+  content: string
+  altScreen: boolean
+  mouseMode: MouseMode
+  cursor?: Cursor
+  backgroundColor?: string
+  foregroundColor?: string
+  windowTitle?: string
+  progressBar?: ProgressBar
+  keyboardEnhancements: KeyboardEnhancements
+  reportFocus: boolean
+  disableBracketedPasteMode: boolean
+  onMouse?: (msg: MouseMsg) => Msg | null
+}
+
+/**
+ * CreateView creates a new View with the given content.
+ */
+export function CreateView(content: string): View {
+  return {
+    content,
+    altScreen: false,
+    mouseMode: "none",
+    keyboardEnhancements: {
+      reportEventTypes: false,
+      reportAlternateKeys: false,
+      reportAllKeysAsEscapeCodes: false,
+      reportAssociatedText: false,
+    },
+    reportFocus: false,
+    disableBracketedPasteMode: false,
+  }
+}
+
+/**
  * Mouse button constants (X11 codes).
  */
 export const MouseNone = 0
@@ -167,9 +286,9 @@ export interface Model {
 
   /**
    * View renders the UI.
-   * Returns styled string.
+   * Returns a View object with content and display options.
    */
-  view(): string
+  view(): View
 }
 
 /**
@@ -182,6 +301,14 @@ export interface BatchMsg {
 
 /**
  * SequenceMsg runs commands in order.
+ */
+export interface SequenceMsg {
+  type: "sequence"
+  cmds: Cmd[]
+}
+
+/**
+ * TickMsg is sent after a delay.
  */
 export interface SequenceMsg {
   type: "sequence"

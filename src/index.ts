@@ -20,6 +20,8 @@ export {
   DisableMouse,
   EnableReportFocus,
   DisableReportFocus,
+  Suspend,
+  Interrupt,
 } from "./commands"
 export type {
   Model,
@@ -44,8 +46,20 @@ export type {
   MouseButton,
   Mouse,
   EnvMsg,
+  View,
+  Cursor,
+  ProgressBar,
+  CursorShape,
+  MouseMode,
+  KeyboardEnhancements,
+  ProgressBarState,
+  Position,
+  SuspendMsg,
+  ResumeMsg,
+  InterruptMsg,
 } from "./types"
 export {
+  CreateView,
   MouseNone,
   MouseLeft,
   MouseMiddle,
@@ -103,3 +117,25 @@ export {
   SetWindowTitle,
   type CursorShape,
 } from "./screen"
+export {
+  RequestBackgroundColor,
+  RequestForegroundColor,
+  RequestCursorColor,
+  type BackgroundColorMsg,
+  type ForegroundColorMsg,
+  type CursorColorMsg,
+} from "./color-queries"
+export * from "./key-constants"
+export {
+  ModShift,
+  ModAlt,
+  ModCtrl,
+  ModMeta,
+  ModHyper,
+  ModSuper,
+  ModCapsLock,
+  ModNumLock,
+  ModScrollLock,
+  modContains,
+  type KeyMod,
+} from "./mod"
