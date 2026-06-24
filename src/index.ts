@@ -22,6 +22,7 @@ export {
   DisableReportFocus,
   Suspend,
   Interrupt,
+  Raw,
 } from "./commands"
 export type {
   Model,
@@ -33,6 +34,7 @@ export type {
   MouseReleaseMsg,
   MouseMotionMsg,
   MouseWheelMsg,
+  MouseMsgAll,
   WindowSizeMsg,
   CursorPositionMsg,
   FocusMsg,
@@ -57,6 +59,10 @@ export type {
   SuspendMsg,
   ResumeMsg,
   InterruptMsg,
+  RawMsg,
+  ColorProfileMsg,
+  ModeReportMsg,
+  CapabilityMsg,
 } from "./types"
 export {
   CreateView,
@@ -70,6 +76,9 @@ export {
   MouseWheelRight,
   MouseBackward,
   MouseForward,
+  ColorProfileNoColor,
+  ColorProfileAscii,
+  ColorProfileTrueColor,
 } from "./types"
 export type { BatchMsg, SequenceMsg, QuitMsg, TickMsg, PrintMsg } from "./types"
 export { Renderer } from "./renderer"
@@ -86,6 +95,9 @@ export {
   WithoutSignalHandler,
   WithoutCatchPanics,
   WithFilter,
+  WithContext,
+  WithEnvironment,
+  WithColorProfile,
 } from "./options"
 export type { ProgramOption } from "./options"
 export {
@@ -115,7 +127,6 @@ export {
   ShowCursor,
   SetCursorShape,
   SetWindowTitle,
-  type CursorShape,
 } from "./screen"
 export {
   RequestBackgroundColor,

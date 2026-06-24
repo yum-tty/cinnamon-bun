@@ -16,6 +16,9 @@ export class Renderer {
   private height: number = 24
   private cursorVisible: boolean = false
   private altScreen: boolean = false
+  private pendingBuffer: string = ""
+  private syncOutput: boolean = false
+  private lastViewContent: string = ""
 
   constructor(output: NodeJS.WriteStream = process.stdout) {
     this.output = output
@@ -95,7 +98,7 @@ export class Renderer {
     }
   }
 
-  private diffAndRender(): void {
+  private diffAndRender(): string {
     let lastStyle = ""
     let buffer = ""
     let changes = 0
@@ -122,22 +125,45 @@ export class Renderer {
     if (changes > 0) {
       buffer += `${CSI}0m`
       buffer += `${CSI}${this.height};1H`
-      this.output.write(buffer)
     }
 
     const temp = this.prevCells
     this.prevCells = this.currCells
     this.currCells = temp
+
+    return buffer
   }
 
   render(view: string): void {
+    if (view === this.lastViewContent) return
+    this.lastViewContent = view
     this.parseView(view)
-    this.diffAndRender()
+    const diff = this.diffAndRender()
+    if (diff) {
+      this.pendingBuffer += diff
+    }
+  }
+
+  flush(lastFrame: boolean): void {
+    if (this.pendingBuffer.length === 0) return
+    if (this.syncOutput) {
+      this.output.write(`${CSI}?2026h`)
+    }
+    this.output.write(this.pendingBuffer)
+    if (this.syncOutput) {
+      this.output.write(`${CSI}?2026l`)
+    }
+    this.pendingBuffer = ""
+  }
+
+  setSyncOutput(v: boolean): void {
+    this.syncOutput = v
   }
 
   clear(): void {
     this.write(`${CSI}2J${CSI}H`)
     this.initCells()
+    this.lastViewContent = ""
   }
 
   showCursor(): void {
@@ -172,8 +198,6 @@ export class Renderer {
     }
     this.write(`${CSI}0m`)
   }
-
-  flush(): void {}
 
   private write(data: string): void {
     this.output.write(data)

@@ -1,13 +1,22 @@
 // program.ts | bubbletea event loop
 
-import type { Model, Msg, Cmd, ProgramConfig, KeyMsg, MouseMsg, WindowSizeMsg, View } from "./types"
+import type { Model, Msg, Cmd, ProgramConfig, KeyMsg, MouseMsgAll, WindowSizeMsg, View } from "./types"
+import { EnvMsg } from "./types"
 import { Renderer } from "./renderer"
 import { enableRawMode, disableRawMode, readKey, parseMouse } from "./input"
 import type { ProgramOption } from "./options"
 
-/**
- * Program is the main bubble tea runtime.
- */
+const RE_MOUSE = /^\x1b\[<\d+;\d+;\d+[Mm]$/
+const RE_MOD_ARROW = /^\x1b\[1;(\d+)[ABCD]$/
+const RE_MOD_KEY = /^\x1b\[1;(\d+)[HPQRS]$/
+const RE_MOD_TILDE = /^\x1b\[1;(\d+)~$/
+const RE_TILDE = /^\x1b\[[0-9]+~$/
+const RE_HOME = /^\x1b\[H$/
+const RE_END = /^\x1b\[F$/
+const RE_REPORT_POS = /^\x1b\[6n$/
+const RE_FKEY_MOD = /^\x1b\[1;(\d+)[PRST]$/
+const RE_FKEY = /^\x1b[OP-QS]$/
+
 export class Program {
   private model: Model
   private renderer: Renderer
@@ -26,6 +35,30 @@ export class Program {
   private inputBuffer: string = ""
   private finishedPromise: Promise<void>
   private finishedResolve: () => void = () => {}
+  private env: Record<string, string> = process.env as Record<string, string>
+  private colorProfile: number = (() => {
+    const colorterm = (process.env.COLORTERM ?? "").toLowerCase()
+    if (colorterm === "truecolor" || colorterm === "24bit") return 2
+
+    const termProgram = (process.env.TERM_PROGRAM ?? "").toLowerCase()
+    if (termProgram === "wezterm" || termProgram === "vscode" || termProgram === "hyper" || termProgram === "iterm.app") return 2
+
+    const vteVersion = process.env.VTE_VERSION ?? ""
+    if (vteVersion !== "") {
+      const major = parseInt(vteVersion.split(".")[0] ?? "0", 10)
+      const minor = parseInt(vteVersion.split(".")[1] ?? "0", 10)
+      if (major > 0 || minor >= 50) return 2
+    }
+
+    const term = (process.env.TERM ?? "").toLowerCase()
+    if (term.includes("256color")) return 2
+    if (term.includes("truecolor") || term.includes("24bit")) return 2
+    if (term === "" || term === "dumb") return 0
+    return 1
+  })()
+  private ctx: AbortController | null = null
+  private ticker: ReturnType<typeof setInterval> | null = null
+  private syncOutput: boolean = false
 
   constructor(config: ProgramConfig, ...options: ProgramOption[]) {
     this.model = config.model
@@ -38,13 +71,11 @@ export class Program {
       this.finishedResolve = resolve
     })
 
-    // Apply options
     for (const opt of options) {
       opt(this)
     }
   }
 
-  // Option setters (called by ProgramOption functions)
   setAltScreen(v: boolean): void { this.altScreen = v }
   setMouseMode(mode: "none" | "cell" | "all"): void { this.mouseMode = mode }
   setFPS(fps: number): void { this.fps = fps }
@@ -54,20 +85,23 @@ export class Program {
   setSignalHandler(v: boolean): void { this.signalHandler = v }
   setCatchPanics(v: boolean): void { this.catchPanics = v }
   setFilter(filter: (msg: any) => any): void { this.filter = filter }
+  setContext(ctx: AbortSignal): void {
+    this.ctx = new AbortController()
+    ctx.addEventListener("abort", () => {
+      this.send({ type: "quit" })
+    })
+  }
+  setEnvironment(env: Record<string, string>): void { this.env = env }
+  setColorProfile(profile: number): void { this.colorProfile = profile }
 
-  /**
-   * Run starts the program.
-   */
   async run(): Promise<Model> {
     this.running = true
 
-    // Init terminal
     if (this.rendererEnabled) {
       this.renderer.init(this.altScreen)
     }
     enableRawMode(this.input)
 
-    // Handle signals
     if (this.signalHandler) {
       const cleanup = () => {
         this.stop()
@@ -83,54 +117,50 @@ export class Program {
       })
     }
 
-    // Handle resize
     this.output.on("resize", () => {
       const { width, height } = this.renderer.getSize()
       this.send({ type: "windowSize", width, height } as WindowSizeMsg)
     })
 
-    // Send initial window size
     const { width, height } = this.renderer.getSize()
     this.send({ type: "windowSize", width, height } as WindowSizeMsg)
 
-    // Run init
+    this.send({ type: "colorProfile", profile: this.colorProfile } as any)
+    this.send(new EnvMsg(this.env) as any)
+
+    if (this.rendererEnabled) {
+      this.output.write("\x1b[?2026$p")
+    }
+
     const [initModel, initCmd] = this.model.init()
     this.model = initModel
     if (initCmd) {
       this.cmds.push(initCmd)
     }
 
-    // Start input reader
+    if (this.rendererEnabled) {
+      const view = this.model.view()
+      const content = typeof view === "string" ? view : view.content
+      this.renderer.render(content)
+    }
+
     this.readInput()
+    this.startRenderer()
 
-    // Start render loop
-    this.renderLoop()
+    this.processCmds().catch(() => {})
 
-    // Process commands
-    await this.processCmds()
-
-    this.finishedResolve()
+    await this.finishedPromise
     return this.model
   }
 
-  /**
-   * Wait waits for the program to finish.
-   */
   async wait(): Promise<void> {
     return this.finishedPromise
   }
 
-  /**
-   * Quit sends a quit message to the program.
-   */
   quit(): void {
     this.send({ type: "quit" })
   }
 
-  /**
-   * ReleaseTerminal restores the original terminal state.
-   * You can return control with RestoreTerminal.
-   */
   releaseTerminal(): void {
     this.running = false
     disableRawMode(this.input)
@@ -139,17 +169,12 @@ export class Program {
     }
   }
 
-  /**
-   * RestoreTerminal reinitializes the terminal and repaints.
-   * Use after ReleaseTerminal.
-   */
   restoreTerminal(): void {
     this.running = true
     if (this.rendererEnabled) {
       this.renderer.init(this.altScreen)
     }
     enableRawMode(this.input)
-    // Flush queued commands
     const view = this.model.view()
     const content = typeof view === "string" ? view : view.content
     if (this.rendererEnabled) {
@@ -157,84 +182,192 @@ export class Program {
     }
   }
 
-  /**
-   * Println prints a line above the program.
-   * This output is unmanaged and persists across renders.
-   */
   println(...args: any[]): void {
     this.send({ type: "print", text: args.join(" ") } as any)
   }
 
-  /**
-   * Printf prints formatted text above the program.
-   * This output is unmanaged and persists across renders.
-   */
   printf(template: string, ...args: any[]): void {
     this.send({ type: "print", text: template.replace(/%s/g, () => String(args.shift())) } as any)
   }
 
-  /**
-   * Stop the program.
-   */
   stop(): void {
     this.running = false
+    if (this.ticker) {
+      clearInterval(this.ticker)
+      this.ticker = null
+    }
     disableRawMode(this.input)
     if (this.rendererEnabled) {
       this.renderer.restore()
     }
+    this.finishedResolve()
   }
 
-  /**
-   * Send a message to the model.
-   */
   send(msg: Msg): void {
     if (!this.running || msg === null) return
 
-    // Apply filter
     if (this.filter) {
       msg = this.filter(msg)
       if (msg === null) return
     }
 
-    // Handle special messages
-    if ((msg as any).type === "quit") {
-      this.stop()
-      process.exit(0)
+    const m = msg as any
+
+    // Messages that skip Update entirely
+    if (m.type === "batch") {
+      this.execBatchMsg(m.cmds)
+      return
+    }
+    if (m.type === "sequence") {
+      this.execSequenceMsg(m.cmds)
       return
     }
 
-    if ((msg as any).type === "batch") {
-      const batch = msg as any
-      this.cmds.push(...batch.cmds)
-      return
+    // Special message side effects (fall through to Update after)
+    if (m.type === "print") {
+      const text = m.text ?? ""
+      this.output.write(`\x1b[?25l\x1b[1A\r\x1b[2K${text}\r\n\x1b[?25h`)
+    } else if (m.type === "clearScreen") {
+      if (this.rendererEnabled) this.renderer.clear()
+    } else if (m.type === "raw") {
+      this.output.write(String(m.msg))
+    } else if (m.type === "requestBackgroundColor") {
+      this.output.write("\x1b]11;?\x07")
+    } else if (m.type === "requestForegroundColor") {
+      this.output.write("\x1b]10;?\x07")
+    } else if (m.type === "requestCursorColor") {
+      this.output.write("\x1b]12;?\x07")
+    } else if (m.type === "readClipboard") {
+      this.output.write("\x1b]52;c;?\x07")
+    } else if (m.type === "setClipboard") {
+      const content = m.content.length > 1048576 ? m.content.slice(0, 1048576) : m.content
+      const b64 = Buffer.from(content).toString("base64")
+      this.output.write(`\x1b]52;c;${b64}\x07`)
+    } else if (m.type === "readPrimaryClipboard") {
+      this.output.write("\x1b]52;p;?\x07")
+    } else if (m.type === "setPrimaryClipboard") {
+      const b64 = Buffer.from(m.content).toString("base64")
+      this.output.write(`\x1b]52;p;${b64}\x07`)
+    } else if (m.type === "requestCursorPosition") {
+      this.output.write("\x1b[6n")
+    } else if (m.type === "enableKeyboardEnhancements") {
+      this.output.write("\x1b[>31u")
+    } else if (m.type === "disableKeyboardEnhancements") {
+      this.output.write("\x1b[<u")
+    } else if (m.type === "modeReport") {
+      if (m.mode === 2026 && m.value === 2) {
+        this.syncOutput = true
+        if (this.rendererEnabled) this.renderer.setSyncOutput(true)
+      }
+    } else if (m.type === "mouse") {
+      const view = this.model.view()
+      if (view.onMouse) {
+        const cmd = view.onMouse(msg as any)
+        if (cmd) {
+          const result = (cmd as any)()
+          if (result) {
+            if (result instanceof Promise) {
+              result.then((r: Msg) => this.send(r))
+            } else {
+              this.send(result)
+            }
+          }
+        }
+      }
     }
 
-    if ((msg as any).type === "sequence") {
-      const seq = msg as any
-      this.cmds.push(...seq.cmds)
-      return
-    }
-
-    if ((msg as any).type === "print") {
-      // Print above the UI
-      return
-    }
-
-    // Update model
+    // Update model and render (Go: model.Update + p.render for ALL messages)
     const [newModel, cmd] = this.model.update(msg)
     this.model = newModel
 
-    if (cmd) {
-      this.cmds.push(cmd)
+    if (m.type === "quit") {
+      this.stop()
+      return
+    }
+
+    if (cmd) this.cmds.push(cmd)
+
+    if (this.rendererEnabled) {
+      const view = this.model.view()
+      const content = typeof view === "string" ? view : view.content
+      this.renderer.render(content)
     }
   }
 
-  /**
-   * Replace the model.
-   */
   setModel(model: Model): void {
     this.model = model
   }
+
+  private execBatchMsg(cmds: Cmd[]): void {
+    if (!cmds || cmds.length === 0) return
+    const valid = cmds.filter((c): c is NonNullable<Cmd> => c !== null)
+    const promises = valid.map(async (cmd) => {
+      if (this.catchPanics) {
+        try {
+          const msg = await cmd()
+          this.send(msg)
+        } catch (err) {
+          this.recoverFromPanic(err)
+        }
+      } else {
+        const msg = await cmd()
+        this.send(msg)
+      }
+    })
+    Promise.all(promises).catch(() => {})
+  }
+
+  private execSequenceMsg(cmds: Cmd[]): void {
+    if (!cmds || cmds.length === 0) return
+    const run = async () => {
+      for (const cmd of cmds) {
+        if (!cmd) continue
+        if (this.catchPanics) {
+          try {
+            const msg = await cmd()
+            if (msg && (msg as any).type === "batch") {
+              this.execBatchMsg((msg as any).cmds)
+            } else if (msg && (msg as any).type === "sequence") {
+              this.execSequenceMsg((msg as any).cmds)
+            } else {
+              this.send(msg)
+            }
+          } catch (err) {
+            this.recoverFromPanic(err)
+          }
+        } else {
+          const msg = await cmd()
+          if (msg && (msg as any).type === "batch") {
+            this.execBatchMsg((msg as any).cmds)
+          } else if (msg && (msg as any).type === "sequence") {
+            this.execSequenceMsg((msg as any).cmds)
+          } else {
+            this.send(msg)
+          }
+        }
+      }
+    }
+    run().catch(() => {})
+  }
+
+  private recoverFromPanic(r: any): void {
+    this.running = false
+    if (this.ticker) {
+      clearInterval(this.ticker)
+      this.ticker = null
+    }
+    disableRawMode(this.input)
+    if (this.rendererEnabled) {
+      this.renderer.restore()
+    }
+    const rec = String(r).replace(/\n/g, "\r\n")
+    process.stderr.write(`Caught panic:\r\n\r\n${rec}\r\n\r\nRestoring terminal...\r\n\r\n`)
+    const stack = new Error().stack?.replace(/\n/g, "\r\n") || ""
+    process.stderr.write(stack + "\r\n")
+    this.finishedResolve()
+  }
+
+  private inputTimer: ReturnType<typeof setTimeout> | null = null
 
   private readInput(): void {
     this.input.on("data", (data: string) => {
@@ -242,21 +375,41 @@ export class Program {
 
       this.inputBuffer += data
 
-      // Try mouse first
+      if (this.inputBuffer.length > 65536) {
+        this.inputBuffer = this.inputBuffer.slice(-65536)
+      }
+
       const mouse = parseMouse(this.inputBuffer)
       if (mouse) {
         this.inputBuffer = ""
-        this.send({ type: "mouse", ...mouse } as MouseMsg)
+        this.flushInputTimer()
+        this.send(mouse as any)
         return
       }
 
-      // Check if we have a complete key sequence
       if (this.isCompleteSequence(this.inputBuffer)) {
         const key = readKey(this.inputBuffer)
         this.inputBuffer = ""
-        this.send({ type: "key", ...key } as KeyMsg)
+        this.flushInputTimer()
+        this.send(key as KeyMsg)
+      } else if (!this.inputTimer) {
+        this.inputTimer = setTimeout(() => {
+          this.inputTimer = null
+          if (this.inputBuffer.length > 0) {
+            const key = readKey(this.inputBuffer)
+            this.inputBuffer = ""
+            this.send(key as KeyMsg)
+          }
+        }, 100)
       }
     })
+  }
+
+  private flushInputTimer(): void {
+    if (this.inputTimer) {
+      clearTimeout(this.inputTimer)
+      this.inputTimer = null
+    }
   }
 
   private isCompleteSequence(data: string): boolean {
@@ -264,47 +417,61 @@ export class Program {
 
     if (data.startsWith("\x1b")) {
       if (data === "\x1b") return true
+      if (RE_MOUSE.test(data)) return true
+      if (RE_MOD_ARROW.test(data)) return true
+      if (RE_MOD_KEY.test(data)) return true
+      if (RE_MOD_TILDE.test(data)) return true
+      if (RE_TILDE.test(data)) return true
+      if (RE_HOME.test(data)) return true
+      if (RE_END.test(data)) return true
+      if (RE_REPORT_POS.test(data)) return true
       if (data === "\x1b[A" || data === "\x1b[B" || data === "\x1b[C" || data === "\x1b[D") return true
-      if (data === "\x1b[1;2A" || data === "\x1b[1;2B" || data === "\x1b[1;2C" || data === "\x1b[1;2D") return true
-      if (data === "\x1b[1;5A" || data === "\x1b[1;5B" || data === "\x1b[1;5C" || data === "\x1b[1;5D") return true
       if (data === "\x1b[H" || data === "\x1b[F") return true
       if (data === "\x1b[5~" || data === "\x1b[6~") return true
       if (data === "\x1b[3~" || data === "\x1b[2~") return true
       if (data === "\x1b[Z") return true
-      if (data.match(/\x1b\[<\d+;\d+;\d+[Mm]$/)) return true
+      if (data === "\x1b[I" || data === "\x1b[O") return true
+      if (RE_FKEY.test(data)) return true
+      if (data.length > 2 && data[1] !== "[") return true
       return false
     }
 
     return true
   }
 
-  private renderLoop(): void {
-    const interval = 1000 / this.fps
-
-    const render = () => {
+  private startRenderer(): void {
+    const interval = Math.max(1000 / this.fps, 8)
+    this.ticker = setInterval(() => {
       if (!this.running) return
-
       if (this.rendererEnabled) {
-        const view = this.model.view()
-        const content = typeof view === "string" ? view : view.content
-        if (content !== this.lastFrame) {
-          this.renderer.render(content)
-          this.lastFrame = content
-        }
+        this.renderer.flush(false)
       }
-
-      setTimeout(render, interval)
-    }
-
-    render()
+    }, interval)
   }
 
   private async processCmds(): Promise<void> {
     while (this.running) {
       if (this.cmds.length > 0) {
-        const cmd = this.cmds.shift()!
-        const msg = await cmd()
-        this.send(msg)
+        const batch: Array<Promise<void>> = []
+        while (this.cmds.length > 0) {
+          const cmd = this.cmds.shift()!
+          batch.push(
+            (async () => {
+              if (this.catchPanics) {
+                try {
+                  const msg = await cmd()
+                  this.send(msg)
+                } catch (err) {
+                  this.recoverFromPanic(err)
+                }
+              } else {
+                const msg = await cmd()
+                this.send(msg)
+              }
+            })()
+          )
+        }
+        await Promise.all(batch)
       } else {
         await new Promise((r) => setTimeout(r, 10))
       }
@@ -312,9 +479,6 @@ export class Program {
   }
 }
 
-/**
- * Create and run a new program.
- */
 export function NewProgram(config: ProgramConfig, ...options: ProgramOption[]): Program {
   return new Program(config, ...options)
 }
