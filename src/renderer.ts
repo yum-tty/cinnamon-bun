@@ -84,7 +84,7 @@ export class Renderer {
       }
 
       while (x < this.width) {
-        this.currCells[y]![x] = { char: " ", style: "" }
+        this.currCells[y]![x] = { char: " ", style: currentStyle }
         x++
       }
       y++
