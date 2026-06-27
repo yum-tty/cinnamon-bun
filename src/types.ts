@@ -1,16 +1,84 @@
 // types.ts | core types (bubbletea port)
 
+import type { KeyMod } from "./mod"
+import { ModCtrl, ModAlt, ModShift, ModMeta } from "./mod"
+
 export type Msg = Record<string, any> | null
 
-export interface KeyMsg {
-  type: "key"
+// Error sentinels
+export const ErrProgramPanic = new Error("program experienced a panic")
+export const ErrProgramKilled = new Error("program was killed")
+export const ErrInterrupted = new Error("program was interrupted")
+
+// Key represents a key press or release event.
+export class Key {
+  type: string
   name: string
-  ctrl: boolean
-  shift: boolean
-  alt: boolean
-  meta: boolean
-  sequence: string
-  rune?: string
+  text: string
+  mod: KeyMod
+  code: number
+  shiftedCode: number
+  baseCode: number
+  isRepeat: boolean
+
+  get ctrl(): boolean { return !!(this.mod & ModCtrl) }
+  get alt(): boolean { return !!(this.mod & ModAlt) }
+  get shift(): boolean { return !!(this.mod & ModShift) }
+  get meta(): boolean { return !!(this.mod & ModMeta) }
+
+  constructor(
+    text: string = "",
+    mod: KeyMod = 0,
+    code: number = 0,
+    shiftedCode: number = 0,
+    baseCode: number = 0,
+    isRepeat: boolean = false,
+    name: string = "",
+  ) {
+    this.type = "key"
+    this.name = name
+    this.text = text
+    this.mod = mod
+    this.code = code
+    this.shiftedCode = shiftedCode
+    this.baseCode = baseCode
+    this.isRepeat = isRepeat
+  }
+
+  string(): string {
+    if (this.text) return this.text
+    return this.keystroke()
+  }
+
+  keystroke(): string {
+    const parts: string[] = []
+    if (this.mod & ModCtrl) parts.push("ctrl")
+    if (this.mod & ModAlt) parts.push("alt")
+    if (this.mod & ModShift) parts.push("shift")
+    const codeStr = String.fromCodePoint(this.code)
+    if (this.text || codeStr) parts.push(this.text || codeStr)
+    return parts.join("+")
+  }
+}
+
+// KeyPressMsg represents a key press message.
+export class KeyPressMsg extends Key {
+  key(): Key {
+    return new Key(this.text, this.mod, this.code, this.shiftedCode, this.baseCode, this.isRepeat, this.name)
+  }
+}
+
+// KeyReleaseMsg represents a key release message.
+export class KeyReleaseMsg extends Key {
+  key(): Key {
+    return new Key(this.text, this.mod, this.code, this.shiftedCode, this.baseCode, this.isRepeat, this.name)
+  }
+}
+
+// KeyMsg represents a key event (press or release).
+export interface KeyMsg {
+  string(): string
+  key(): Key
 }
 
 export type CursorShape = "block" | "underline" | "bar"
@@ -28,11 +96,22 @@ export interface Position {
   y: number
 }
 
-export type ProgressBarState = "none" | "default" | "error" | "indeterminate" | "warning"
+// ProgressBarState represents the state of the progress bar.
+export enum ProgressBarState {
+  None = 0,
+  Default,
+  Error,
+  Indeterminate,
+  Warning,
+}
 
 export interface ProgressBar {
   state: ProgressBarState
   value: number
+}
+
+export function NewProgressBar(state: ProgressBarState, value: number): ProgressBar {
+  return { state, value: Math.max(0, Math.min(value, 100)) }
 }
 
 export type MouseMode = "none" | "cell" | "all"

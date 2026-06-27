@@ -161,6 +161,19 @@ export class Program {
     this.send({ type: "quit" })
   }
 
+  kill(): void {
+    this.running = false
+    if (this.ticker) {
+      clearInterval(this.ticker)
+      this.ticker = null
+    }
+    disableRawMode(this.input)
+    if (this.rendererEnabled) {
+      this.renderer.restore()
+    }
+    this.finishedResolve()
+  }
+
   releaseTerminal(): void {
     this.running = false
     disableRawMode(this.input)

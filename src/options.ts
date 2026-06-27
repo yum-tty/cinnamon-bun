@@ -87,3 +87,11 @@ export function WithColorProfile(profile: number): ProgramOption {
     p.setColorProfile(profile)
   }
 }
+
+export function WithoutSignals(): ProgramOption {
+  return () => {}
+}
+
+export function WithWindowSize(width: number, height: number): ProgramOption {
+  return () => {}
+}

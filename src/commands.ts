@@ -1,6 +1,7 @@
 // commands.ts | command helpers (bubbletea port)
 
 import type { Cmd, Msg, BatchMsg, SequenceMsg, QuitMsg, SuspendMsg, InterruptMsg, TickMsg, PrintMsg, ExecCommand, ExecCallback, RawMsg } from "./types"
+import type { KeyMsg, KeyReleaseMsg } from "./types"
 
 export function Quit(): Cmd {
   return () => ({ type: "quit" } as QuitMsg)
@@ -146,4 +147,31 @@ export function SetWindowTitle(title: string): Msg {
 
 export function Raw(r: any): Cmd {
   return () => ({ type: "raw", msg: r } as RawMsg)
+}
+
+export function ExecProcess(
+  execFn: () => Promise<void>,
+  fn: (error: Error | null) => Msg,
+  releaseTerminal?: () => void,
+  restoreTerminal?: () => void,
+): Cmd {
+  return async () => {
+    if (releaseTerminal) releaseTerminal()
+    try {
+      await execFn()
+      return fn(null)
+    } catch (err) {
+      return fn(err as Error)
+    } finally {
+      if (restoreTerminal) restoreTerminal()
+    }
+  }
+}
+
+export function RequestTerminalVersion(): Msg {
+  return { type: "terminalVersion" }
+}
+
+export function RequestCapability(capability: string): Cmd {
+  return () => ({ type: "requestCapability", content: capability })
 }

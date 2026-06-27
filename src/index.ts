@@ -23,6 +23,9 @@ export {
   Suspend,
   Interrupt,
   Raw,
+  ExecProcess,
+  RequestTerminalVersion,
+  RequestCapability,
 } from "./commands"
 export type {
   Model,
@@ -54,7 +57,6 @@ export type {
   CursorShape,
   MouseMode,
   KeyboardEnhancements,
-  ProgressBarState,
   Position,
   SuspendMsg,
   ResumeMsg,
@@ -64,6 +66,8 @@ export type {
   ModeReportMsg,
   CapabilityMsg,
 } from "./types"
+export { Key, KeyPressMsg, KeyReleaseMsg, ProgressBarState, NewProgressBar } from "./types"
+export { ErrProgramPanic, ErrProgramKilled, ErrInterrupted } from "./types"
 export {
   CreateView,
   MouseNone,
@@ -98,6 +102,8 @@ export {
   WithContext,
   WithEnvironment,
   WithColorProfile,
+  WithoutSignals,
+  WithWindowSize,
 } from "./options"
 export type { ProgramOption } from "./options"
 export {
@@ -150,3 +156,4 @@ export {
   modContains,
   type KeyMod,
 } from "./mod"
+export { LogToFile, LogToFileWith, type LogOptionsSetter } from "./logging"
