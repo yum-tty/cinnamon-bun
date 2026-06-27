@@ -86,6 +86,7 @@ export {
 } from "./types"
 export type { BatchMsg, SequenceMsg, QuitMsg, TickMsg, PrintMsg } from "./types"
 export { Renderer } from "./renderer"
+export { ColorProfile, detectColorProfile } from "./color-profile"
 export { readKey, parseMouse } from "./input"
 export {
   WithAltScreen,

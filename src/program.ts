@@ -3,6 +3,7 @@
 import type { Model, Msg, Cmd, ProgramConfig, KeyMsg, MouseMsgAll, WindowSizeMsg, View } from "./types"
 import { EnvMsg } from "./types"
 import { Renderer } from "./renderer"
+import { detectColorProfile, ColorProfile } from "./color-profile"
 import { enableRawMode, disableRawMode, readKey, parseMouse } from "./input"
 import type { ProgramOption } from "./options"
 
@@ -36,26 +37,7 @@ export class Program {
   private finishedPromise: Promise<void>
   private finishedResolve: () => void = () => {}
   private env: Record<string, string> = process.env as Record<string, string>
-  private colorProfile: number = (() => {
-    const colorterm = (process.env.COLORTERM ?? "").toLowerCase()
-    if (colorterm === "truecolor" || colorterm === "24bit") return 2
-
-    const termProgram = (process.env.TERM_PROGRAM ?? "").toLowerCase()
-    if (termProgram === "wezterm" || termProgram === "vscode" || termProgram === "hyper" || termProgram === "iterm.app") return 2
-
-    const vteVersion = process.env.VTE_VERSION ?? ""
-    if (vteVersion !== "") {
-      const major = parseInt(vteVersion.split(".")[0] ?? "0", 10)
-      const minor = parseInt(vteVersion.split(".")[1] ?? "0", 10)
-      if (major > 0 || minor >= 50) return 2
-    }
-
-    const term = (process.env.TERM ?? "").toLowerCase()
-    if (term.includes("256color")) return 2
-    if (term.includes("truecolor") || term.includes("24bit")) return 2
-    if (term === "" || term === "dumb") return 0
-    return 1
-  })()
+  private colorProfile: number = detectColorProfile()
   private ctx: AbortController | null = null
   private ticker: ReturnType<typeof setInterval> | null = null
   private syncOutput: boolean = false
@@ -63,6 +45,7 @@ export class Program {
   constructor(config: ProgramConfig, ...options: ProgramOption[]) {
     this.model = config.model
     this.renderer = new Renderer(this.output)
+    this.renderer.setColorProfile(this.colorProfile as ColorProfile)
     this.altScreen = config.altScreen ?? true
     this.mouseMode = config.mouseMode ?? "none"
     this.fps = config.fps ?? 60
@@ -92,7 +75,10 @@ export class Program {
     })
   }
   setEnvironment(env: Record<string, string>): void { this.env = env }
-  setColorProfile(profile: number): void { this.colorProfile = profile }
+  setColorProfile(profile: number): void {
+    this.colorProfile = profile
+    this.renderer.setColorProfile(profile as ColorProfile)
+  }
 
   async run(): Promise<Model> {
     this.running = true
@@ -119,6 +105,7 @@ export class Program {
 
     this.output.on("resize", () => {
       const { width, height } = this.renderer.getSize()
+      this.renderer.resize(width, height)
       this.send({ type: "windowSize", width, height } as WindowSizeMsg)
     })
 

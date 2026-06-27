@@ -1,4 +1,6 @@
-// renderer.ts | cell-based terminal renderer
+// renderer.ts | cell-based terminal renderer with color profile support
+
+import { ColorProfile, downsampleAnsiSequence } from "./color-profile"
 
 const ESC = "\x1b"
 const CSI = `${ESC}[`
@@ -7,6 +9,8 @@ interface Cell {
   char: string
   style: string
 }
+
+const EMPTY_CELL: Cell = { char: " ", style: "" }
 
 export class Renderer {
   private output: NodeJS.WriteStream
@@ -19,6 +23,11 @@ export class Renderer {
   private pendingBuffer: string = ""
   private syncOutput: boolean = false
   private lastViewContent: string = ""
+  private colorProfile: ColorProfile = ColorProfile.TrueColor
+  private cursorX: number = 0
+  private cursorY: number = 0
+  private currentStyle: string = ""
+  private forceFullRedraw: boolean = true
 
   constructor(output: NodeJS.WriteStream = process.stdout) {
     this.output = output
@@ -31,12 +40,14 @@ export class Renderer {
     this.prevCells = []
     this.currCells = []
     for (let y = 0; y < this.height; y++) {
-      this.prevCells.push([])
-      this.currCells.push([])
+      const prevRow: Cell[] = []
+      const currRow: Cell[] = []
       for (let x = 0; x < this.width; x++) {
-        this.prevCells[y]!.push({ char: " ", style: "" })
-        this.currCells[y]!.push({ char: " ", style: "" })
+        prevRow.push({ ...EMPTY_CELL })
+        currRow.push({ ...EMPTY_CELL })
       }
+      this.prevCells.push(prevRow)
+      this.currCells.push(currRow)
     }
   }
 
@@ -48,6 +59,49 @@ export class Renderer {
     this.write(`${CSI}?25l`)
     this.write(`${CSI}2J`)
     this.write(`${CSI}H`)
+    this.cursorX = 0
+    this.cursorY = 0
+    this.currentStyle = ""
+    this.forceFullRedraw = true
+    this.prevCells = []
+    for (let y = 0; y < this.height; y++) {
+      const row: Cell[] = []
+      for (let x = 0; x < this.width; x++) {
+        row.push({ ...EMPTY_CELL })
+      }
+      this.prevCells.push(row)
+    }
+  }
+
+  setColorProfile(profile: ColorProfile): void {
+    this.colorProfile = profile
+  }
+
+  setSyncOutput(v: boolean): void {
+    this.syncOutput = v
+  }
+
+  private downsampleStyle(style: string): string {
+    if (this.colorProfile >= ColorProfile.TrueColor) return style
+    return downsampleAnsiSequence(this.colorProfile, style)
+  }
+
+  private moveToSeq(x: number, y: number): string {
+    if (x === this.cursorX && y === this.cursorY) return ""
+    const seq = `${CSI}${y + 1};${x + 1}H`
+    this.cursorX = x
+    this.cursorY = y
+    return seq
+  }
+
+  private moveCursorRel(dx: number, dy: number): string {
+    if (dx === 0 && dy === 0) return ""
+    const nx = this.cursorX + dx
+    const ny = this.cursorY + dy
+    if (nx < 0 || ny < 0 || nx >= this.width || ny >= this.height) {
+      return this.moveToSeq(Math.max(0, Math.min(nx, this.width - 1)), Math.max(0, Math.min(ny, this.height - 1)))
+    }
+    return this.moveToSeq(nx, ny)
   }
 
   private parseView(view: string): void {
@@ -92,7 +146,7 @@ export class Renderer {
 
     while (y < this.height) {
       for (let x = 0; x < this.width; x++) {
-        this.currCells[y]![x] = { char: " ", style: "" }
+        this.currCells[y]![x] = { ...EMPTY_CELL }
       }
       y++
     }
@@ -102,40 +156,76 @@ export class Renderer {
     let lastStyle = ""
     let buffer = ""
     let changes = 0
+    const pendingMoves: Array<{ x: number; y: number }> = []
 
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
         const prev = this.prevCells[y]![x]!
         const curr = this.currCells[y]![x]!
 
-        if (prev.char !== curr.char || prev.style !== curr.style) {
-          buffer += `${CSI}${y + 1};${x + 1}H`
+        if (prev.char === curr.char && prev.style === curr.style) continue
 
-          if (curr.style !== lastStyle) {
-            buffer += curr.style
-            lastStyle = curr.style
-          }
-
-          buffer += curr.char
-          changes++
+        if (!this.forceFullRedraw) {
+          if (prev.char === curr.char && prev.style !== curr.style) continue
         }
+
+        let needMove = false
+        if (changes === 0 || pendingMoves.length > 0) {
+          needMove = true
+        } else if (x !== this.cursorX || y !== this.cursorY) {
+          needMove = true
+        }
+
+        if (needMove) {
+          if (pendingMoves.length === 0 || pendingMoves.length <= 3) {
+            pendingMoves.push({ x, y })
+          } else {
+            const moveSeq = this.moveToSeq(x, y)
+            buffer += moveSeq
+          }
+        }
+
+        const downsampledStyle = this.downsampleStyle(curr.style)
+        if (downsampledStyle !== lastStyle) {
+          buffer += downsampledStyle
+          lastStyle = downsampledStyle
+        }
+
+        buffer += curr.char
+        changes++
+        this.cursorX = x + 1
+        this.cursorY = y
       }
     }
 
+    if (pendingMoves.length > 0 && pendingMoves.length <= 3) {
+      const first = pendingMoves[0]!
+      const moveSeq = this.moveToSeq(first.x, first.y)
+      buffer = moveSeq + buffer
+    } else if (pendingMoves.length > 3 && changes > 0) {
+      const first = pendingMoves[0]!
+      buffer = this.moveToSeq(first.x, first.y) + buffer
+    }
+
     if (changes > 0) {
-      buffer += `${CSI}0m`
-      buffer += `${CSI}${this.height};1H`
+      if (lastStyle !== "") {
+        buffer += `${CSI}0m`
+      }
+      if (this.altScreen) {
+        buffer += this.moveToSeq(0, 0)
+      }
     }
 
     const temp = this.prevCells
     this.prevCells = this.currCells
     this.currCells = temp
+    this.forceFullRedraw = false
 
     return buffer
   }
 
   render(view: string): void {
-    if (view === this.lastViewContent) return
+    if (view === this.lastViewContent && !this.forceFullRedraw) return
     this.lastViewContent = view
     this.parseView(view)
     const diff = this.diffAndRender()
@@ -156,12 +246,12 @@ export class Renderer {
     this.pendingBuffer = ""
   }
 
-  setSyncOutput(v: boolean): void {
-    this.syncOutput = v
-  }
-
   clear(): void {
     this.write(`${CSI}2J${CSI}H`)
+    this.cursorX = 0
+    this.cursorY = 0
+    this.currentStyle = ""
+    this.forceFullRedraw = true
     this.initCells()
     this.lastViewContent = ""
   }
@@ -181,7 +271,15 @@ export class Renderer {
   }
 
   moveTo(x: number, y: number): void {
-    this.write(`${CSI}${y + 1};${x + 1}H`)
+    const seq = this.moveToSeq(x, y)
+    if (seq) this.write(seq)
+  }
+
+  resize(w: number, h: number): void {
+    this.width = w
+    this.height = h
+    this.forceFullRedraw = true
+    this.initCells()
   }
 
   getSize(): { width: number; height: number } {
@@ -197,6 +295,9 @@ export class Renderer {
       this.write(`${CSI}?1049l`)
     }
     this.write(`${CSI}0m`)
+    this.cursorX = 0
+    this.cursorY = 0
+    this.currentStyle = ""
   }
 
   private write(data: string): void {
