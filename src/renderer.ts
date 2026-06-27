@@ -104,6 +104,37 @@ export class Renderer {
     return this.moveToSeq(nx, ny)
   }
 
+  private static isHighSurrogate(code: number): boolean {
+    return code >= 0xD800 && code <= 0xDBFF
+  }
+
+  private static charWidth(char: string): number {
+    const code = char.codePointAt(0)!
+    if (code >= 0x1100 &&
+        (code <= 0x115F || code === 0x2329 || code === 0x232A ||
+         (code >= 0x2E80 && code <= 0x3247 && code !== 0x303F) ||
+         (code >= 0x3250 && code <= 0x4DBF) ||
+         (code >= 0x4E00 && code <= 0xA4C6) ||
+         (code >= 0xA960 && code <= 0xA97C) ||
+         (code >= 0xAC00 && code <= 0xD7A3) ||
+         (code >= 0xF900 && code <= 0xFAFF) ||
+         (code >= 0xFE10 && code <= 0xFE19) ||
+         (code >= 0xFE30 && code <= 0xFE6B) ||
+         (code >= 0xFF01 && code <= 0xFF60) ||
+         (code >= 0xFFE0 && code <= 0xFFE6) ||
+         (code >= 0x1B000 && code <= 0x1B001) ||
+         (code >= 0x1F200 && code <= 0x1F251) ||
+         (code >= 0x1F300 && code <= 0x1F5FF) ||
+         (code >= 0x1F600 && code <= 0x1F64F) ||
+         (code >= 0x1F680 && code <= 0x1F6FF) ||
+         (code >= 0x1F900 && code <= 0x1F9FF) ||
+         (code >= 0x20000 && code <= 0x2FFFD) ||
+         (code >= 0x30000 && code <= 0x3FFFD))) {
+      return 2
+    }
+    return 1
+  }
+
   private parseView(view: string): void {
     const lines = view.split("\n")
     let x = 0
@@ -132,9 +163,26 @@ export class Renderer {
           continue
         }
 
-        this.currCells[y]![x] = { char: line[i]!, style: currentStyle }
+        const code = line.charCodeAt(i)
+        let char: string
+        let w: number
+
+        if (Renderer.isHighSurrogate(code) && i + 1 < line.length) {
+          char = line[i]! + line[i + 1]!
+          w = Renderer.charWidth(char)
+          i += 2
+        } else {
+          char = line[i]!
+          w = Renderer.charWidth(char)
+          i++
+        }
+
+        this.currCells[y]![x] = { char, style: currentStyle }
         x++
-        i++
+        if (w === 2 && x < this.width) {
+          this.currCells[y]![x] = { char: " ", style: currentStyle }
+          x++
+        }
       }
 
       while (x < this.width) {
