@@ -232,10 +232,6 @@ export class Renderer {
 
         if (prev.char === curr.char && prev.style === curr.style) continue
 
-        if (!this.forceFullRedraw) {
-          if (prev.char === curr.char && prev.style !== curr.style) continue
-        }
-
         let needMove = false
         if (changes === 0 || pendingMoves.length > 0) {
           needMove = true
