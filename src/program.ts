@@ -244,7 +244,7 @@ export class Program {
   }
 
   send(msg: Msg): void {
-    if (!this.running || msg === null) return
+    if (!this.running || msg == null) return
 
     if (this.filter) {
       msg = this.filter(msg)
@@ -280,13 +280,14 @@ export class Program {
     } else if (m.type === "readClipboard") {
       this.output.write("\x1b]52;c;?\x07")
     } else if (m.type === "setClipboard") {
-      const content = m.content.length > 1048576 ? m.content.slice(0, 1048576) : m.content
+      const raw = m.content ?? ""
+      const content = raw.length > 1048576 ? raw.slice(0, 1048576) : raw
       const b64 = Buffer.from(content).toString("base64")
       this.output.write(`\x1b]52;c;${b64}\x07`)
     } else if (m.type === "readPrimaryClipboard") {
       this.output.write("\x1b]52;p;?\x07")
     } else if (m.type === "setPrimaryClipboard") {
-      const b64 = Buffer.from(m.content).toString("base64")
+      const b64 = Buffer.from(m.content ?? "").toString("base64")
       this.output.write(`\x1b]52;p;${b64}\x07`)
     } else if (m.type === "requestCursorPosition") {
       this.output.write("\x1b[6n")

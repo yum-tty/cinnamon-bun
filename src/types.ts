@@ -55,7 +55,7 @@ export class Key {
     if (this.mod & ModCtrl) parts.push("ctrl")
     if (this.mod & ModAlt) parts.push("alt")
     if (this.mod & ModShift) parts.push("shift")
-    const codeStr = String.fromCodePoint(this.code)
+    const codeStr = this.code <= 0x10FFFF ? String.fromCodePoint(this.code) : ""
     if (this.text || codeStr) parts.push(this.text || codeStr)
     return parts.join("+")
   }

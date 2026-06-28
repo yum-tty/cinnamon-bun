@@ -109,6 +109,7 @@ export class Renderer {
   }
 
   private static charWidth(char: string): number {
+    if (!char) return 0
     const code = char.codePointAt(0)!
     if (code >= 0x1100 &&
         (code <= 0x115F || code === 0x2329 || code === 0x232A ||
@@ -344,8 +345,8 @@ export class Renderer {
   }
 
   resize(w: number, h: number): void {
-    this.width = w
-    this.height = h
+    this.width = Math.max(1, w)
+    this.height = Math.max(1, h)
     this.forceFullRedraw = true
     this.initCells()
   }
