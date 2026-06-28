@@ -160,10 +160,10 @@ export function readKey(data: string): KeyPressMsg {
   }
 
   if (data === "\x1b[I") {
-    return { type: "focus" } as any
+    return new KeyPressMsg("", 0, 0, 0, 0, false, "focus")
   }
   if (data === "\x1b[O") {
-    return { type: "blur" } as any
+    return new KeyPressMsg("", 0, 0, 0, 0, false, "blur")
   }
 
   return makeKey("unknown", 0, "", sequence)

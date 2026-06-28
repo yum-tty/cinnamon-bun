@@ -66,7 +66,7 @@ export function WithoutCatchPanics(): ProgramOption {
 
 export function WithFilter(filter: (msg: any) => any): ProgramOption {
   return (p) => {
-    p.setFilter(filter)
+    if (filter) p.setFilter(filter)
   }
 }
 
@@ -93,5 +93,5 @@ export function WithoutSignals(): ProgramOption {
 }
 
 export function WithWindowSize(width: number, height: number): ProgramOption {
-  return () => {}
+  return (p) => { p.setWindowSize(width, height) }
 }

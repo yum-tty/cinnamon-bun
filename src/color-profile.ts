@@ -51,9 +51,7 @@ export function profileFromNumber(n: number): ColorProfile {
 }
 
 export function profileToNumber(p: ColorProfile): number {
-  if (p >= 0) return p
-  if (p === ColorProfile.Ascii) return 0
-  return 0
+  return p
 }
 
 function rgbToAnsi256(r: number, g: number, b: number): number {

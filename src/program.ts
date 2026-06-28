@@ -86,6 +86,9 @@ export class Program {
     this.colorProfile = profile
     this.renderer.setColorProfile(profile as ColorProfile)
   }
+  setWindowSize(width: number, height: number): void {
+    this.renderer.resize(width, height)
+  }
 
   async run(): Promise<Model> {
     this.running = true

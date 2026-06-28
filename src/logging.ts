@@ -17,7 +17,7 @@ export function LogToFile(path: string, prefix: string): fs.WriteStream {
 export function LogToFileWith(path: string, prefix: string, opts: LogOptionsSetter): fs.WriteStream {
   const f = fs.createWriteStream(path, { flags: "a" })
   opts.setOutput(f)
-  let finalPrefix = prefix
+  let finalPrefix = prefix ?? ""
   if (finalPrefix.length > 0) {
     const lastChar = finalPrefix[finalPrefix.length - 1]
     if (lastChar !== " ") {

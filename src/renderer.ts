@@ -178,6 +178,8 @@ export class Renderer {
           if (i < line.length) {
             seq += line[i]
             i++
+          } else {
+            seq = ""
           }
           currentStyle = seq
           continue
@@ -191,6 +193,9 @@ export class Renderer {
           char = line[i]! + line[i + 1]!
           w = Renderer.charWidth(char)
           i += 2
+        } else if (Renderer.isHighSurrogate(code)) {
+          i++
+          continue
         } else {
           char = line[i]!
           w = Renderer.charWidth(char)
