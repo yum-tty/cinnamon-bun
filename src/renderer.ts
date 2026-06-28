@@ -294,6 +294,11 @@ export class Renderer {
   render(view: string): void {
     if (view === this.lastViewContent && !this.forceFullRedraw) return
     this.lastViewContent = view
+    for (let y = 0; y < this.height; y++) {
+      for (let x = 0; x < this.width; x++) {
+        this.currCells[y]![x] = { ...EMPTY_CELL }
+      }
+    }
     this.parseView(view)
     const diff = this.diffAndRender()
     if (diff) {
