@@ -294,11 +294,6 @@ export class Renderer {
   render(view: string): void {
     if (view === this.lastViewContent && !this.forceFullRedraw) return
     this.lastViewContent = view
-    if (this.altScreen) {
-      this.write(`${CSI}2J${CSI}H`)
-      this.cursorX = 0
-      this.cursorY = 0
-    }
     this.parseView(view)
     const diff = this.diffAndRender()
     if (diff) {
