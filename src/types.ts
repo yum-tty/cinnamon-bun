@@ -110,6 +110,10 @@ export interface ProgressBar {
   value: number
 }
 
+export function NewCursor(x: number, y: number, shape: CursorShape = "block"): Cursor {
+  return { x, y, shape, blink: false }
+}
+
 export function NewProgressBar(state: ProgressBarState, value: number): ProgressBar {
   return { state, value: Math.max(0, Math.min(value, 100)) }
 }
@@ -180,6 +184,8 @@ export const MouseWheelLeft = 6
 export const MouseWheelRight = 7
 export const MouseBackward = 8
 export const MouseForward = 9
+export const MouseButton10 = 10
+export const MouseButton11 = 11
 
 export type MouseButton = number
 
