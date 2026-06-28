@@ -119,7 +119,10 @@ export class Program {
     }
 
     this.onResize = () => {
-      const { width, height } = this.renderer.getSize()
+      const { width: outW, height: outH } = this.renderer.getSize()
+      const { width: rW, height: rH } = this.renderer.getInternalSize()
+      const width = outW || rW
+      const height = outH || rH
       this.renderer.resize(width, height)
       this.send({ type: "windowSize", width, height } as WindowSizeMsg)
     }
@@ -166,16 +169,7 @@ export class Program {
   }
 
   kill(): void {
-    this.running = false
-    if (this.ticker) {
-      clearInterval(this.ticker)
-      this.ticker = null
-    }
-    disableRawMode(this.input)
-    if (this.rendererEnabled) {
-      this.renderer.restore()
-    }
-    this.finishedResolve()
+    this.stop()
   }
 
   releaseTerminal(): void {
@@ -303,7 +297,7 @@ export class Program {
         this.syncOutput = true
         if (this.rendererEnabled) this.renderer.setSyncOutput(true)
       }
-    } else if (m.type === "mouse") {
+    } else if (["mouseClick","mouseRelease","mouseMotion","mouseWheel"].includes(m.type)) {
       const view = this.model.view()
       if (view.onMouse) {
         const cmd = view.onMouse(msg as any)

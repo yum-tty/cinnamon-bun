@@ -175,13 +175,13 @@ export class Renderer {
             seq += line[i]
             i++
           }
-          if (i < line.length) {
+          if (i < line.length && line[i] === "m") {
             seq += line[i]
             i++
+            currentStyle = seq
           } else {
             seq = ""
           }
-          currentStyle = seq
           continue
         }
 
@@ -360,6 +360,13 @@ export class Renderer {
     return {
       width: this.output.columns || 80,
       height: this.output.rows || 24,
+    }
+  }
+
+  getInternalSize(): { width: number; height: number } {
+    return {
+      width: this.width,
+      height: this.height,
     }
   }
 
