@@ -150,6 +150,25 @@ export class Renderer {
         if (x >= this.width) break
 
         if (line[i] === "\x1b") {
+          if (i + 1 < line.length && line[i + 1] === "]") {
+            let seq = "\x1b]"
+            i += 2
+            while (i < line.length) {
+              if (line[i] === "\x07") {
+                seq += line[i]
+                i++
+                break
+              }
+              if (line[i] === "\x1b" && i + 1 < line.length && line[i + 1] === "\\") {
+                seq += "\x1b\\"
+                i += 2
+                break
+              }
+              seq += line[i]
+              i++
+            }
+            continue
+          }
           let seq = ""
           while (i < line.length && line[i] !== "m") {
             seq += line[i]
@@ -241,7 +260,7 @@ export class Renderer {
 
         buffer += curr.char
         changes++
-        this.cursorX = x + 1
+        this.cursorX = Math.min(x + 1, this.width - 1)
         this.cursorY = y
       }
     }

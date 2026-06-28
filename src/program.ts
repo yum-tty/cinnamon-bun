@@ -32,6 +32,7 @@ export class Program {
   private input: NodeJS.ReadStream = process.stdin
   private output: NodeJS.WriteStream = process.stdout
   private cmds: Cmd[] = []
+  private cmdSignal: (() => void) | null = null
   private lastFrame: string = ""
   private inputBuffer: string = ""
   private finishedPromise: Promise<void>
@@ -41,6 +42,11 @@ export class Program {
   private ctx: AbortController | null = null
   private ticker: ReturnType<typeof setInterval> | null = null
   private syncOutput: boolean = false
+  private onResize: (() => void) | null = null
+  private onInputData: ((data: string) => void) | null = null
+  private onSigInt: (() => void) | null = null
+  private onSigTerm: (() => void) | null = null
+  private onExit: (() => void) | null = null
 
   constructor(config: ProgramConfig, ...options: ProgramOption[]) {
     this.model = config.model
@@ -89,25 +95,31 @@ export class Program {
     enableRawMode(this.input)
 
     if (this.signalHandler) {
-      const cleanup = () => {
+      this.onSigInt = () => {
         this.stop()
         process.exit(0)
       }
-      process.on("SIGINT", cleanup)
-      process.on("SIGTERM", cleanup)
-      process.on("exit", () => {
+      this.onSigTerm = () => {
+        this.stop()
+        process.exit(0)
+      }
+      this.onExit = () => {
         disableRawMode(this.input)
         if (this.rendererEnabled) {
           this.renderer.restore()
         }
-      })
+      }
+      process.on("SIGINT", this.onSigInt)
+      process.on("SIGTERM", this.onSigTerm)
+      process.on("exit", this.onExit)
     }
 
-    this.output.on("resize", () => {
+    this.onResize = () => {
       const { width, height } = this.renderer.getSize()
       this.renderer.resize(width, height)
       this.send({ type: "windowSize", width, height } as WindowSizeMsg)
-    })
+    }
+    this.output.on("resize", this.onResize)
 
     const { width, height } = this.renderer.getSize()
     this.send({ type: "windowSize", width, height } as WindowSizeMsg)
@@ -123,6 +135,7 @@ export class Program {
     this.model = initModel
     if (initCmd) {
       this.cmds.push(initCmd)
+      this.signalCmds()
     }
 
     if (this.rendererEnabled) {
@@ -196,7 +209,31 @@ export class Program {
       clearInterval(this.ticker)
       this.ticker = null
     }
+    if (this.cmdSignal) {
+      this.cmdSignal()
+      this.cmdSignal = null
+    }
     disableRawMode(this.input)
+    if (this.onInputData) {
+      this.input.removeListener("data", this.onInputData)
+      this.onInputData = null
+    }
+    if (this.onResize) {
+      this.output.removeListener("resize", this.onResize)
+      this.onResize = null
+    }
+    if (this.onSigInt) {
+      process.removeListener("SIGINT", this.onSigInt)
+      this.onSigInt = null
+    }
+    if (this.onSigTerm) {
+      process.removeListener("SIGTERM", this.onSigTerm)
+      this.onSigTerm = null
+    }
+    if (this.onExit) {
+      process.removeListener("exit", this.onExit)
+      this.onExit = null
+    }
     if (this.rendererEnabled) {
       this.renderer.restore()
     }
@@ -285,7 +322,10 @@ export class Program {
       return
     }
 
-    if (cmd) this.cmds.push(cmd)
+    if (cmd) {
+      this.cmds.push(cmd)
+      this.signalCmds()
+    }
 
     if (this.rendererEnabled) {
       const view = this.model.view()
@@ -370,7 +410,7 @@ export class Program {
   private inputTimer: ReturnType<typeof setTimeout> | null = null
 
   private readInput(): void {
-    this.input.on("data", (data: string) => {
+    this.onInputData = (data: string) => {
       if (!this.running) return
 
       this.inputBuffer += data
@@ -402,7 +442,8 @@ export class Program {
           }
         }, 100)
       }
-    })
+    }
+    this.input.on("data", this.onInputData)
   }
 
   private flushInputTimer(): void {
@@ -449,6 +490,14 @@ export class Program {
     }, interval)
   }
 
+  private signalCmds(): void {
+    if (this.cmdSignal) {
+      const resolve = this.cmdSignal
+      this.cmdSignal = null
+      resolve()
+    }
+  }
+
   private async processCmds(): Promise<void> {
     while (this.running) {
       if (this.cmds.length > 0) {
@@ -473,7 +522,7 @@ export class Program {
         }
         await Promise.all(batch)
       } else {
-        await new Promise((r) => setTimeout(r, 10))
+        await new Promise<void>((r) => { this.cmdSignal = r })
       }
     }
   }

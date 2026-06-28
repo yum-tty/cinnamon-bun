@@ -110,7 +110,7 @@ export function downsampleAnsiSequence(profile: ColorProfile, seq: string): stri
 }
 
 function downsampleSgrParams(profile: ColorProfile, params: string): string {
-  const parts = params.split(";").map(Number)
+  const parts = params.split(";").map(Number).filter((n) => !Number.isNaN(n))
   const result: number[] = []
   let i = 0
   while (i < parts.length) {
