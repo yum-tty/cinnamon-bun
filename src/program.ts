@@ -47,6 +47,7 @@ export class Program {
   private onSigInt: (() => void) | null = null
   private onSigTerm: (() => void) | null = null
   private onExit: (() => void) | null = null
+  private shutdownOnceFlag: boolean = false
 
   constructor(config: ProgramConfig, ...options: ProgramOption[]) {
     this.model = config.model
@@ -204,6 +205,8 @@ export class Program {
   }
 
   stop(): void {
+    if (this.shutdownOnceFlag) return
+    this.shutdownOnceFlag = true
     this.running = false
     if (this.ticker) {
       clearInterval(this.ticker)
@@ -530,4 +533,20 @@ export class Program {
 
 export function NewProgram(config: ProgramConfig, ...options: ProgramOption[]): Program {
   return new Program(config, ...options)
+}
+
+export function kill(p: Program): void {
+  p.kill()
+}
+
+export async function wait(p: Program): Promise<void> {
+  return p.wait()
+}
+
+export function releaseTerminal(p: Program): void {
+  p.releaseTerminal()
+}
+
+export function restoreTerminal(p: Program): void {
+  p.restoreTerminal()
 }

@@ -1,6 +1,6 @@
 // index.ts | Cinnamon Bun - bubbletea port for Bun
 
-export { Program, NewProgram } from "./program"
+export { Program, NewProgram, kill, wait, releaseTerminal, restoreTerminal } from "./program"
 export {
   Quit,
   Batch,
