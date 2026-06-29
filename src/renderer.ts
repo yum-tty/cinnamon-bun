@@ -256,7 +256,11 @@ export class Renderer {
 
         const downsampledStyle = this.downsampleStyle(curr.style)
         if (downsampledStyle !== lastStyle) {
-          buffer += downsampledStyle
+          if (lastStyle !== "" && downsampledStyle === "") {
+            buffer += `${CSI}0m`
+          } else {
+            buffer += downsampledStyle
+          }
           lastStyle = downsampledStyle
         }
 
