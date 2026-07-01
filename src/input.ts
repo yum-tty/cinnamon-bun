@@ -36,8 +36,8 @@ function modFromParams(params: number[]): number {
   if (mod & 2) result |= ModAlt
   if (mod & 4) result |= ModCtrl
   if (mod & 8) result |= ModMeta
-  if (mod & 16) result |= 1 << 5
-  if (mod & 32) result |= 1 << 4
+  if (mod & 16) result |= 1 << 4
+  if (mod & 32) result |= 1 << 5
   return result
 }
 

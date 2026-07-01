@@ -100,8 +100,7 @@ export class Program {
 
     if (this.signalHandler) {
       this.onSigInt = () => {
-        this.stop()
-        process.exit(0)
+        this.send({ type: "interrupt" })
       }
       this.onSigTerm = () => {
         this.stop()
@@ -162,6 +161,10 @@ export class Program {
 
   async wait(): Promise<void> {
     return this.finishedPromise
+  }
+
+  Send(msg: Msg): void {
+    this.send(msg)
   }
 
   quit(): void {
@@ -237,6 +240,7 @@ export class Program {
     if (this.rendererEnabled) {
       this.renderer.restore()
     }
+    this.input.unref?.()
     this.finishedResolve()
   }
 
@@ -312,6 +316,33 @@ export class Program {
           }
         }
       }
+    } else if (m.type === "enterAltScreen") {
+      if (this.rendererEnabled) {
+        this.altScreen = true
+        this.output.write("\x1b[?1049h")
+      }
+    } else if (m.type === "exitAltScreen") {
+      if (this.rendererEnabled) {
+        this.output.write("\x1b[?1049l")
+        this.altScreen = false
+      }
+    } else if (m.type === "moveCursor") {
+      const x = m.x ?? 0
+      const y = m.y ?? 0
+      this.output.write(`\x1b[${y + 1};${x + 1}H`)
+    } else if (m.type === "hideCursor") {
+      this.output.write("\x1b[?25l")
+    } else if (m.type === "showCursor") {
+      this.output.write("\x1b[?25h")
+    } else if (m.type === "setCursorShape") {
+      const shapes: Record<string, string> = {
+        block: "\x1b[2 q",
+        underline: "\x1b[4 q",
+        bar: "\x1b[6 q",
+      }
+      this.output.write(shapes[m.shape] ?? shapes["block"]!)
+    } else if (m.type === "setWindowTitle") {
+      this.output.write(`\x1b]0;${m.title ?? ""}\x07`)
     }
 
     // Update model and render (Go: model.Update + p.render for ALL messages)
@@ -319,6 +350,17 @@ export class Program {
     this.model = newModel
 
     if (m.type === "quit") {
+      this.stop()
+      return
+    }
+
+    if (m.type === "interrupt") {
+      this.stop()
+      return
+    }
+
+    // System quit keys bypass cmd queue — stop immediately
+    if (m.type === "key" && (m.name === "escape" || (m.name === "c" && m.ctrl))) {
       this.stop()
       return
     }
@@ -502,26 +544,20 @@ export class Program {
   private async processCmds(): Promise<void> {
     while (this.running) {
       if (this.cmds.length > 0) {
-        const batch: Array<Promise<void>> = []
         while (this.cmds.length > 0) {
           const cmd = this.cmds.shift()!
-          batch.push(
-            (async () => {
-              if (this.catchPanics) {
-                try {
-                  const msg = await cmd()
-                  this.send(msg)
-                } catch (err) {
-                  this.recoverFromPanic(err)
-                }
-              } else {
-                const msg = await cmd()
-                this.send(msg)
-              }
-            })()
-          )
+          if (this.catchPanics) {
+            try {
+              const msg = await cmd()
+              this.send(msg)
+            } catch (err) {
+              this.recoverFromPanic(err)
+            }
+          } else {
+            const msg = await cmd()
+            this.send(msg)
+          }
         }
-        await Promise.all(batch)
       } else {
         await new Promise<void>((r) => { this.cmdSignal = r })
       }

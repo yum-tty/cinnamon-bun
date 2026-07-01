@@ -113,6 +113,7 @@ export class Renderer {
     const code = char.codePointAt(0)!
     if (code >= 0x1100 &&
         (code <= 0x115F || code === 0x2329 || code === 0x232A ||
+         (code >= 0x2800 && code <= 0x28FF) ||
          (code >= 0x2E80 && code <= 0x3247 && code !== 0x303F) ||
          (code >= 0x3250 && code <= 0x4DBF) ||
          (code >= 0x4E00 && code <= 0xA4C6) ||
@@ -145,6 +146,7 @@ export class Renderer {
     for (const line of lines) {
       if (y >= this.height) break
       x = 0
+      currentStyle = ""
 
       let i = 0
       while (i < line.length) {
@@ -210,8 +212,9 @@ export class Renderer {
         }
       }
 
+      currentStyle = ""
       while (x < this.width) {
-        this.currCells[y]![x] = { char: " ", style: currentStyle }
+        this.currCells[y]![x] = { char: " ", style: "" }
         x++
       }
       y++
@@ -229,7 +232,8 @@ export class Renderer {
     let lastStyle = ""
     let buffer = ""
     let changes = 0
-    const pendingMoves: Array<{ x: number; y: number }> = []
+    let cursorX = -1
+    let cursorY = -1
 
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
@@ -238,20 +242,9 @@ export class Renderer {
 
         if (prev.char === curr.char && prev.style === curr.style) continue
 
-        let needMove = false
-        if (changes === 0 || pendingMoves.length > 0) {
-          needMove = true
-        } else if (x !== this.cursorX || y !== this.cursorY) {
-          needMove = true
-        }
-
+        const needMove = changes === 0 || x !== cursorX || y !== cursorY
         if (needMove) {
-          if (pendingMoves.length === 0 || pendingMoves.length <= 3) {
-            pendingMoves.push({ x, y })
-          } else {
-            const moveSeq = this.moveToSeq(x, y)
-            buffer += moveSeq
-          }
+          buffer += this.moveToSeq(x, y)
         }
 
         const downsampledStyle = this.downsampleStyle(curr.style)
@@ -266,18 +259,13 @@ export class Renderer {
 
         buffer += curr.char
         changes++
-        this.cursorX = Math.min(x + 1, this.width - 1)
-        this.cursorY = y
+        cursorX = x + 1
+        cursorY = y
+        if (cursorX >= this.width) {
+          cursorX = 0
+          cursorY = y + 1
+        }
       }
-    }
-
-    if (pendingMoves.length > 0 && pendingMoves.length <= 3) {
-      const first = pendingMoves[0]!
-      const moveSeq = this.moveToSeq(first.x, first.y)
-      buffer = moveSeq + buffer
-    } else if (pendingMoves.length > 3 && changes > 0) {
-      const first = pendingMoves[0]!
-      buffer = this.moveToSeq(first.x, first.y) + buffer
     }
 
     if (changes > 0) {
@@ -298,7 +286,6 @@ export class Renderer {
   }
 
   render(view: string): void {
-    if (view === this.lastViewContent && !this.forceFullRedraw) return
     this.lastViewContent = view
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
@@ -306,6 +293,12 @@ export class Renderer {
       }
     }
     this.parseView(view)
+    // Always invalidate prev so diff rewrites everything
+    for (let y = 0; y < this.height; y++) {
+      for (let x = 0; x < this.width; x++) {
+        this.prevCells[y]![x] = { char: "\x00", style: "" }
+      }
+    }
     const diff = this.diffAndRender()
     if (diff) {
       this.pendingBuffer += diff

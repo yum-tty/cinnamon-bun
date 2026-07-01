@@ -32,9 +32,12 @@ export function Sequence(...cmds: Cmd[]): Cmd {
 export function Every(ms: number, fn: (data: any) => Msg): Cmd {
   return () => {
     return new Promise((resolve) => {
+      const now = Date.now()
+      const aligned = Math.ceil(now / ms) * ms
+      const delay = aligned - now
       setTimeout(() => {
         resolve(fn(Date.now()))
-      }, ms)
+      }, delay)
     })
   }
 }
@@ -49,16 +52,16 @@ export function Tick(ms: number, fn: (data: any) => Msg): Cmd {
   }
 }
 
-export function Print(text: string): Msg {
-  return { type: "print", text } as PrintMsg
+export function Print(text: string): Cmd {
+  return () => ({ type: "print", text } as PrintMsg)
 }
 
-export function Println(...args: any[]): Msg {
-  return { type: "print", text: args.join(" ") } as PrintMsg
+export function Println(...args: any[]): Cmd {
+  return () => ({ type: "print", text: args.join(" ") } as PrintMsg)
 }
 
-export function Printf(template: string, ...args: any[]): Msg {
-  return { type: "print", text: template.replace(/%s/g, () => String(args.shift())) } as PrintMsg
+export function Printf(template: string, ...args: any[]): Cmd {
+  return () => ({ type: "print", text: template.replace(/%s/g, () => String(args.shift())) } as PrintMsg)
 }
 
 export function RequestWindowSize(): Msg {
