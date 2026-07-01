@@ -159,13 +159,6 @@ export function readKey(data: string): KeyPressMsg {
     return makeKey(char.toLowerCase(), mod, char, sequence)
   }
 
-  if (data === "\x1b[I") {
-    return new KeyPressMsg("", 0, 0, 0, 0, false, "focus")
-  }
-  if (data === "\x1b[O") {
-    return new KeyPressMsg("", 0, 0, 0, 0, false, "blur")
-  }
-
   return makeKey("unknown", 0, "", sequence)
 }
 

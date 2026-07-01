@@ -471,10 +471,20 @@ export class Program {
       }
 
       if (this.isCompleteSequence(this.inputBuffer)) {
-        const key = readKey(this.inputBuffer)
-        this.inputBuffer = ""
-        this.flushInputTimer()
-        this.send(key as KeyMsg)
+        if (this.inputBuffer === "\x1b[I") {
+          this.inputBuffer = ""
+          this.flushInputTimer()
+          this.send({ type: "focus" } as any)
+        } else if (this.inputBuffer === "\x1b[O") {
+          this.inputBuffer = ""
+          this.flushInputTimer()
+          this.send({ type: "blur" } as any)
+        } else {
+          const key = readKey(this.inputBuffer)
+          this.inputBuffer = ""
+          this.flushInputTimer()
+          this.send(key as KeyMsg)
+        }
       } else if (!this.inputTimer) {
         this.inputTimer = setTimeout(() => {
           this.inputTimer = null
