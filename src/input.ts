@@ -29,8 +29,8 @@ export function disableRawMode(input?: NodeJS.ReadStream): void {
 }
 
 function modFromParams(params: number[]): number {
-  if (params.length === 0) return 0
-  const mod = params[0]! - 1
+  if (params.length < 2) return 0
+  const mod = params[1]! - 1
   let result = 0
   if (mod & 1) result |= ModShift
   if (mod & 2) result |= ModAlt
