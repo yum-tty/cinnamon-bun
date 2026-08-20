@@ -1,6 +1,6 @@
 ﻿{
     "name":  "@yum-tty/cinnamon-bun",
-    "version":  "0.1.0",
+    "version": "0.2.0",
     "description":  "The fun, functional and stateful way to build terminal apps. A TypeScript port of Bubble Tea for Bun.",
     "module":  "src/index.ts",
     "type":  "module",
