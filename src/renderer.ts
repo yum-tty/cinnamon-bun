@@ -1,8 +1,8 @@
 // renderer.ts
 
 import { ColorProfile, downsampleAnsiSequence } from "./color-profile"
-import { charDisplayWidth } from "caramel"
-import { CellPool, EMPTY_CELL, Cell } from "./cell-pool"
+import { charDisplayWidth } from "@yum-tty/caramel"
+import { CellPool, EMPTY_CELL, type Cell } from "./cell-pool"
 import { StringBuilder } from "./string-builder"
 
 const ESC = "\x1b"

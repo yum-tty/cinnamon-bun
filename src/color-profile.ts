@@ -114,7 +114,7 @@ function downsampleSgrParams(profile: ColorProfile, params: string): string {
   while (i < parts.length) {
     const p = parts[i]!
     if (p === 38 && parts[i + 1] === 5 && parts[i + 2] !== undefined) {
-      result.push(38, 5, parts[i + 2])
+      result.push(38, 5, parts[i + 2]!)
       i += 3
       continue
     }
@@ -131,7 +131,7 @@ function downsampleSgrParams(profile: ColorProfile, params: string): string {
       continue
     }
     if (p === 48 && parts[i + 1] === 5 && parts[i + 2] !== undefined) {
-      result.push(48, 5, parts[i + 2])
+      result.push(48, 5, parts[i + 2]!)
       i += 3
       continue
     }
